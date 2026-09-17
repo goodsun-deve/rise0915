@@ -1,0 +1,16 @@
+{
+  "name": "rise0915-fake-news-checker",
+  "version": "0.2.0",
+  "private": true,
+  "description": "받은 글이나 유튜브 링크의 가짜뉴스 가능성을 Claude API로 판정하는 웹서비스",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest"
+  }
+}

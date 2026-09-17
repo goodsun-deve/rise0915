@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>가짜뉴스 판별</title>
+<meta name="description" content="받은 글이나 유튜브 링크를 붙여넣으면 AI가 가짜뉴스 가능성을 알려드려요." />
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+<style>
+  :root {
+    --bg: #ffffff;
+    --text: #1f2328;
+    --muted: #6b7280;
+    --line: #e3e5e8;
+    --surface: #f6f7f8;
+    --accent: #1e293b;       /* 강조색: 실행 버튼 한 곳에만 사용 */
+    --accent-text: #ffffff;
+    --warn: #a15c07;         /* 오류 문구 전용 경고색 */
+    --warn-bg: #fdf6ec;
+    --bar: #9aa1a9;          /* 확신도 막대: 중립 회색 */
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Pretendard Variable", Pretendard, system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    -webkit-text-size-adjust: 100%;
+  }
+  main {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 48px 20px 64px;
+  }
+  h1 {
+    font-size: 26px;
+    line-height: 1.35;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin: 0 0 24px;
+  }
+  [hidden] { display: none !important; }
+
+  /* ---------- 첫 화면 ---------- */
+  .field { position: relative; }
+  textarea {
+    display: block;
+    width: 100%;
+    min-height: 220px;
+    resize: vertical;
+    padding: 16px 16px 36px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    line-height: 1.6;
+  }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+  textarea:disabled { background: var(--surface); color: var(--muted); }
+  .counter {
+    position: absolute;
+    right: 14px;
+    bottom: 10px;
+    font-size: 12px;
+    color: var(--muted);
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+    background: rgba(255,255,255,.92);
+    padding: 0 4px;
+    border-radius: 4px;
+  }
+  .counter.over { color: var(--warn); font-weight: 700; }
+
+  .error {
+    margin: 12px 0 0;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--warn-bg);
+    color: var(--warn);
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 54px;
+    padding: 14px 18px;
+    border-radius: var(--radius);
+    font: inherit;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .btn-primary {
+    margin-top: 16px;
+    border: 0;
+    background: var(--accent);
+    color: var(--accent-text);
+  }
+  .btn-primary:disabled { opacity: .75; cursor: progress; }
+  .btn-secondary {
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--text);
+    font-weight: 600;
+  }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .loading {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-top: 16px;
+    color: var(--muted);
+    font-size: 15px;
+  }
+  .spinner {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin-top: 2px;
+    border: 3px solid var(--line);
+    border-top-color: var(--muted);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  .btn .spinner { margin: 0; border-color: rgba(255,255,255,.35); border-top-color: #fff; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+
+  /* ---------- 결과 화면 ---------- */
+  .card {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 28px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .label {
+    display: block;
+    font-size: 14px;
+    color: var(--muted);
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .verdict {
+    font-size: 34px;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    margin: 0;
+  }
+  .verdict[data-level="높음"] { font-weight: 800; }
+  .verdict[data-level="낮음"] { font-weight: 600; }
+  .confidence {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0 0 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  .bar {
+    height: 8px;
+    background: var(--surface);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .bar > span {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--bar);
+    border-radius: 999px;
+    transition: width .4s ease;
+  }
+  .summary { margin: 0 0 14px; }
+  .reasons-title { font-size: 15px; font-weight: 700; margin: 0 0 8px; }
+  .reasons {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .reasons li {
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 15px;
+  }
+  .notice {
+    margin: 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  @media (max-width: 420px) {
+    main { padding: 32px 16px 48px; }
+    h1 { font-size: 23px; }
+    textarea { min-height: 200px; }
+    .card { padding: 24px 18px; }
+    .verdict { font-size: 30px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <!-- 첫 화면 (S-A): 제목 + 입력창 + 실행 버튼 -->
+  <section id="screen-input">
+    <h1>받은 글, 가짜뉴스일까요?</h1>
+    <form id="form" novalidate>
+      <div class="field">
+        <textarea id="input" aria-label="판정할 글 또는 유튜브 링크" placeholder="받은 글이나 유튜브 링크를 붙여넣어 주세요" spellcheck="false"></textarea>
+        <span class="counter" id="counter" aria-hidden="true">0 / 3,000</span>
+      </div>
+      <p class="error" id="error" role="alert" hidden></p>
+      <button type="submit" class="btn btn-primary" id="submit">
+        <span class="spinner" id="btn-spinner" hidden></span>
+        <span id="submit-label">판정하기</span>
+      </button>
+      <div class="loading" id="loading" role="status" aria-live="polite" hidden>
+        <span class="spinner"></span>
+        <div>
+          <div>판정 중이에요. 최대 30초 정도 걸릴 수 있어요.</div>
+          <div id="loading-step"></div>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <!-- 결과 화면 (S-B): 같은 페이지에서 상태만 전환 -->
+  <section id="screen-result" hidden aria-live="polite">
+    <article class="card" id="result-card">
+      <div>
+        <span class="label">가짜뉴스 가능성</span>
+        <p class="verdict" id="verdict"></p>
+      </div>
+      <div>
+        <span class="label">확신도</span>
+        <p class="confidence" id="confidence"></p>
+        <div class="bar" id="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="확신도"><span id="bar-fill"></span></div>
+      </div>
+      <div>
+        <span class="label">판단 이유</span>
+        <p class="summary" id="summary"></p>
+        <p class="reasons-title">핵심 판단 근거</p>
+        <ul class="reasons" id="reasons"></ul>
+      </div>
+      <p class="notice">이 결과는 AI가 판단한 참고용 정보예요. 믿거나 전달하기 전에 직접 한 번 더 확인해 주세요.</p>
+    </article>
+    <div class="actions">
+      <button type="button" class="btn btn-secondary" id="share" hidden>카카오톡으로 공유</button>
+      <button type="button" class="btn btn-secondary" id="reset">다시 검증하기</button>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  const MAX_INPUT = 3000;
+  const CLIENT_TIMEOUT_MS = 30000;
+  const KAKAO_SDK_URL = 'https://t1.kakaocdn.net/kakao_js_sdk/2.8.3/kakao.min.js';
+  const YT_PATTERN = /^(https?:\/\/)?((www|m)\.)?(youtube\.com\/(watch\?|shorts\/|live\/|embed\/)|youtu\.be\/)\S*$/i;
+
+  const MESSAGES = {
+    'F1-E1': '판정할 글이 없어요. 받은 글을 입력창에 붙여넣은 뒤 다시 실행해 주세요.',
+    'F1-E2': '지금은 판정 결과를 받지 못했어요. 잠시 후 다시 실행해 주세요.',
+    'F1-E3': '판정이 예상보다 오래 걸리고 있어요. 잠시 후 다시 실행해 주세요.',
+    'F3-E1': '판정 결과를 제대로 받지 못했어요. 다시 실행해 주세요.',
+    'F3-E2': '판정 결과를 제대로 표시할 수 없어요. 다시 실행해 주세요.',
+    TOO_LONG: '글이 너무 길어요. 3,000자 이내로 줄여서 다시 실행해 주세요.',
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    screenInput: $('screen-input'), screenResult: $('screen-result'),
+    form: $('form'), input: $('input'), counter: $('counter'), error: $('error'),
+    submit: $('submit'), submitLabel: $('submit-label'), btnSpinner: $('btn-spinner'),
+    loading: $('loading'), loadingStep: $('loading-step'),
+    verdict: $('verdict'), confidence: $('confidence'), bar: $('bar'), barFill: $('bar-fill'),
+    summary: $('summary'), reasons: $('reasons'), share: $('share'), reset: $('reset'),
+  };
+
+  let lastResult = null;
+  let stepTimer = null;
+
+  // ---------- 상태 전환 ----------
+  function showError(code, message) {
+    el.error.textContent = message || MESSAGES[code] || MESSAGES['F1-E2'];
+    el.error.hidden = false;
+  }
+  function clearError() {
+    el.error.hidden = true;
+    el.error.textContent = '';
+  }
+
+  function setLoading(on, isYouTube) {
+    el.submit.disabled = on;
+    el.input.disabled = on;
+    el.btnSpinner.hidden = !on;
+    el.submitLabel.textContent = on ? '판정 중…' : '판정하기';
+    el.loading.hidden = !on;
+    clearTimeout(stepTimer);
+    el.loadingStep.textContent = '';
+    if (on && isYouTube) {
+      el.loadingStep.textContent = '영상 자막을 가져오는 중…';
+      stepTimer = setTimeout(() => { el.loadingStep.textContent = 'AI가 분석하는 중…'; }, 5000);
+    }
+  }
+
+  function showResult(r) {
+    lastResult = r;
+    el.verdict.textContent = r.verdict;
+    el.verdict.dataset.level = r.verdict;
+    el.confidence.textContent = r.confidence + '%';
+    el.bar.setAttribute('aria-valuenow', String(r.confidence));
+    el.barFill.style.width = '0';
+    el.summary.textContent = r.summary;
+    el.reasons.replaceChildren(...r.reasons.map((t) => {
+      const li = document.createElement('li');
+      li.textContent = t;
+      return li;
+    }));
+    el.screenInput.hidden = true;
+    el.screenResult.hidden = false;
+    requestAnimationFrame(() => { el.barFill.style.width = r.confidence + '%'; });
+    window.scrollTo({ top: 0 });
+  }
+
+  function resetToInput() {
+    lastResult = null;
+    el.input.value = '';
+    updateCounter();
+    clearError();
+    setLoading(false);
+    el.reasons.replaceChildren();
+    el.screenResult.hidden = true;
+    el.screenInput.hidden = false;
+    window.scrollTo({ top: 0 });
+    el.input.focus();
+  }
+
+  function updateCounter() {
+    const n = el.input.value.length;
+    el.counter.textContent = n.toLocaleString('ko-KR') + ' / 3,000';
+    el.counter.classList.toggle('over', n > MAX_INPUT);
+  }
+
+  // 서버 응답 형식 한 번 더 확인 (서버 검증을 통과했더라도 화면이 깨지지 않게)
+  function checkResult(d) {
+    if (!d || (d.verdict !== '높음' && d.verdict !== '낮음') || typeof d.summary !== 'string'
+        || !Array.isArray(d.reasons) || d.reasons.length === 0 || d.confidence == null) return 'F3-E1';
+    if (typeof d.confidence !== 'number' || d.confidence < 0 || d.confidence > 100) return 'F3-E2';
+    return null;
+  }
+
+  // ---------- 판정 실행 ----------
+  async function run(e) {
+    e.preventDefault();
+    clearError();
+    const input = el.input.value.trim();
+    if (!input) return showError('F1-E1');
+    if (input.length > MAX_INPUT) return showError('TOO_LONG');
+
+    const isYouTube = YT_PATTERN.test(input);
+    setLoading(true, isYouTube);
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), CLIENT_TIMEOUT_MS);
+    try {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input }),
+        signal: ctrl.signal,
+      });
+      let data = null;
+      try { data = await res.json(); } catch { data = null; }
+
+      if (!res.ok || !data || data.error) {
+        const err = data && data.error;
+        if (err && err.message) showError(err.code, err.message);
+        else if (res.status === 504) showError('F1-E3');
+        else showError('F1-E2');
+        return;
+      }
+      const bad = checkResult(data);
+      if (bad) return showError(bad);
+      showResult(data);
+    } catch (err) {
+      showError(err && err.name === 'AbortError' ? 'F1-E3' : 'F1-E2');
+    } finally {
+      clearTimeout(timer);
+      if (el.screenResult.hidden) setLoading(false);
+      else { el.submit.disabled = false; el.input.disabled = false; clearTimeout(stepTimer); }
+    }
+  }
+
+  // ---------- 카카오톡 공유 ----------
+  function firstSentence(s) {
+    const m = String(s).match(/^.*?[.!?。](\s|$)/);
+    return (m ? m[0] : String(s)).trim();
+  }
+
+  function share() {
+    if (!lastResult || !window.Kakao || !Kakao.isInitialized()) return;
+    const head = `가짜뉴스 가능성: ${lastResult.verdict} (확신도 ${lastResult.confidence}%)`;
+    const tail = '※ AI 참고용 판정';
+    let summary = firstSentence(lastResult.summary);
+    const room = 200 - head.length - tail.length - 2;
+    if (summary.length > room) summary = summary.slice(0, Math.max(0, room - 1)) + '…';
+    const url = location.origin + '/';
+    Kakao.Share.sendDefault({
+      objectType: 'text',
+      text: `${head}\n${summary}\n${tail}`,
+      link: { mobileWebUrl: url, webUrl: url },
+      buttonTitle: '나도 확인해 보기',
+    });
+  }
+
+  async function setupKakao() {
+    try {
+      const res = await fetch('/api/config', { cache: 'no-store' });
+      if (!res.ok) return;
+      const { kakaoJsKey } = await res.json();
+      if (!kakaoJsKey) return; // 키가 없으면 버튼을 숨긴 채로 둔다
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = KAKAO_SDK_URL;
+        s.crossOrigin = 'anonymous';
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      if (!window.Kakao) return;
+      if (!Kakao.isInitialized()) Kakao.init(kakaoJsKey);
+      if (Kakao.isInitialized() && Kakao.Share) el.share.hidden = false;
+    } catch {
+      el.share.hidden = true; // SDK 로드 실패 시 버튼 숨김
+    }
+  }
+
+  // ---------- 이벤트 ----------
+  el.form.addEventListener('submit', run);
+  el.input.addEventListener('input', () => { updateCounter(); });
+  el.input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) el.form.requestSubmit();
+  });
+  el.reset.addEventListener('click', resetToInput);
+  el.share.addEventListener('click', share);
+
+  updateCounter();
+  setupKakao();
+})();
+</script>
+</body>
+</html>
